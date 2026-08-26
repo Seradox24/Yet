@@ -6,10 +6,10 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $projectDirectory = Split-Path -Parent $PSScriptRoot
-$envPath = Join-Path $projectDirectory '.env'
+$envPath = Join-Path $projectDirectory '.env.prod'
 
 if (-not (Test-Path -LiteralPath $envPath)) {
-    throw 'No existe .env. Copie .env.example como .env y configure sus credenciales.'
+    throw 'No existe .env.prod. Copie .env.example como .env.prod y configure sus credenciales.'
 }
 
 $envValues = Get-Content -LiteralPath $envPath -Raw |
@@ -18,17 +18,16 @@ $envValues = Get-Content -LiteralPath $envPath -Raw |
 $requiredVariables = @(
     'LRSQL_API_KEY',
     'LRSQL_API_SECRET',
-    'LRSQL_BIND_ADDRESS',
     'LRSQL_HTTP_PORT'
 )
 
 foreach ($variable in $requiredVariables) {
     if ([string]::IsNullOrWhiteSpace($envValues[$variable])) {
-        throw "Falta la variable $variable en .env."
+        throw "Falta la variable $variable en .env.prod."
     }
 }
 
-$baseUrl = "http://$($envValues.LRSQL_BIND_ADDRESS):$($envValues.LRSQL_HTTP_PORT)"
+$baseUrl = "http://127.0.0.1:$($envValues.LRSQL_HTTP_PORT)"
 $basicValue = [Convert]::ToBase64String(
     [Text.Encoding]::UTF8.GetBytes(
         "$($envValues.LRSQL_API_KEY):$($envValues.LRSQL_API_SECRET)"
