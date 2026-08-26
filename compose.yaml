@@ -1,0 +1,60 @@
+name: yet-lrsql
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-lrsql}
+      POSTGRES_USER: ${POSTGRES_USER:-lrsql}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD en el archivo .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  lrsql:
+    image: yetanalytics/lrsql:v0.9.7
+    restart: unless-stopped
+    command:
+      - /lrsql/bin/run_postgres.sh
+    depends_on:
+      postgres:
+        condition: service_healthy
+        restart: true
+    environment:
+      LRSQL_ADMIN_USER_DEFAULT: ${LRSQL_ADMIN_USER:?Defina LRSQL_ADMIN_USER en el archivo .env}
+      LRSQL_ADMIN_PASS_DEFAULT: ${LRSQL_ADMIN_PASSWORD:?Defina LRSQL_ADMIN_PASSWORD en el archivo .env}
+      LRSQL_API_KEY_DEFAULT: ${LRSQL_API_KEY:?Defina LRSQL_API_KEY en el archivo .env}
+      LRSQL_API_SECRET_DEFAULT: ${LRSQL_API_SECRET:?Defina LRSQL_API_SECRET en el archivo .env}
+      LRSQL_DB_HOST: postgres
+      LRSQL_DB_PORT: 5432
+      LRSQL_DB_NAME: ${POSTGRES_DB:-lrsql}
+      LRSQL_DB_USER: ${POSTGRES_USER:-lrsql}
+      LRSQL_DB_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD en el archivo .env}
+      LRSQL_POOL_INITIALIZATION_FAIL_TIMEOUT: 60000
+      LRSQL_ENABLE_HTTP: "true"
+      LRSQL_ENABLE_ADMIN_UI: "true"
+      LRSQL_ALLOW_ALL_ORIGINS: "false"
+      LRSQL_LOG_LEVEL: ${LRSQL_LOG_LEVEL:-INFO}
+    ports:
+      - "${LRSQL_BIND_ADDRESS:-127.0.0.1}:${LRSQL_HTTP_PORT:-8080}:8080"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -q -O /dev/null http://127.0.0.1:8080/admin
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    stop_grace_period: 30s
+
+volumes:
+  postgres_data:
+    name: yet-lrsql-postgres-data

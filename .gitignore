@@ -1,0 +1,18 @@
+# Credenciales locales
+.env
+.env.*
+!.env.example
+
+# Datos persistentes si posteriormente se usan bind mounts
+data/
+
+# Certificados y llaves locales
+config/*.jks
+config/*.pem
+config/*.key
+config/*.crt
+
+# Archivos del sistema y editores
+.DS_Store
+Thumbs.db
+
