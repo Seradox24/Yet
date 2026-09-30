@@ -5,6 +5,7 @@ repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_dir"
 
 test -f .env.prod || { echo "Falta .env.prod" >&2; exit 1; }
+# Los scripts aceptan el formato KEY=value sin comillas de .env.example.
 env_value() { sed -n "s/^$1=//p" .env.prod | tail -n 1; }
 http_port="$(env_value LRSQL_HTTP_PORT)"
 api_key="$(env_value LRSQL_API_KEY)"
@@ -17,9 +18,10 @@ test -n "$http_port" && test -n "$api_key" && test -n "$api_secret" || {
 docker compose --env-file .env.prod config --quiet
 docker compose --env-file .env.prod ps
 base_url="http://127.0.0.1:${http_port}"
-curl --fail --silent --show-error "${base_url}/admin" >/dev/null
+curl --fail --silent --show-error --connect-timeout 5 --max-time 20 "${base_url}/admin" >/dev/null
 curl --fail --silent --show-error \
+  --connect-timeout 5 --max-time 20 \
   -u "${api_key}:${api_secret}" \
   -H 'X-Experience-API-Version: 1.0.3' \
-  "${base_url}/xapi/about" >/dev/null
+  "${base_url}/xapi/statements?limit=1" >/dev/null
 echo "SQL LRS responde correctamente por loopback."

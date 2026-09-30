@@ -1,6 +1,9 @@
 [CmdletBinding()]
 param(
-    [switch]$WriteStatement
+    [switch]$WriteStatement,
+    [ValidateSet('1.0.3', '2.0.0')]
+    [string]$XapiVersion = '1.0.3',
+    [switch]$Public
 )
 
 $ErrorActionPreference = 'Stop'
@@ -28,6 +31,12 @@ foreach ($variable in $requiredVariables) {
 }
 
 $baseUrl = "http://127.0.0.1:$($envValues.LRSQL_HTTP_PORT)"
+if ($Public) {
+    if ([string]::IsNullOrWhiteSpace($envValues.LRSQL_PUBLIC_URL)) {
+        throw 'Falta LRSQL_PUBLIC_URL para la prueba pública.'
+    }
+    $baseUrl = $envValues.LRSQL_PUBLIC_URL.TrimEnd('/')
+}
 $basicValue = [Convert]::ToBase64String(
     [Text.Encoding]::UTF8.GetBytes(
         "$($envValues.LRSQL_API_KEY):$($envValues.LRSQL_API_SECRET)"
@@ -35,7 +44,7 @@ $basicValue = [Convert]::ToBase64String(
 )
 $headers = @{
     Authorization              = "Basic $basicValue"
-    'X-Experience-API-Version' = '2.0.0'
+    'X-Experience-API-Version' = $XapiVersion
 }
 
 $adminResponse = Invoke-WebRequest `
@@ -47,6 +56,12 @@ $aboutResponse = Invoke-RestMethod `
     -Uri "$baseUrl/xapi/about" `
     -Headers $headers `
     -TimeoutSec 15
+
+# /about no garantiza que las credenciales puedan leer la base de datos.
+Invoke-RestMethod `
+    -Uri "$baseUrl/xapi/statements?limit=1" `
+    -Headers $headers `
+    -TimeoutSec 15 | Out-Null
 
 [PSCustomObject]@{
     Check          = 'Lectura'

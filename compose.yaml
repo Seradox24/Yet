@@ -2,7 +2,7 @@ name: yet-lrsql
 
 services:
   postgres:
-    image: postgres:16.15-alpine
+    image: postgres:16.15-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-lrsql}
@@ -22,7 +22,8 @@ services:
       start_period: 10s
 
   lrsql:
-    image: yetanalytics/lrsql:v0.9.7
+    image: yetanalytics/lrsql:v0.9.7@sha256:e80e9bf9f715d93e9e2ad084dcec7a9847087d24485b71d126aede22e4d40827
+    platform: linux/amd64
     restart: unless-stopped
     command:
       - /lrsql/bin/run_postgres.sh
@@ -42,8 +43,12 @@ services:
       LRSQL_DB_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD en .env.prod}
       LRSQL_POOL_INITIALIZATION_FAIL_TIMEOUT: 60000
       LRSQL_ENABLE_HTTP: "true"
+      LRSQL_HTTP_HOST: "0.0.0.0"
+      LRSQL_HTTP_PORT: "8080"
       LRSQL_ENABLE_ADMIN_UI: "true"
       LRSQL_ALLOW_ALL_ORIGINS: "false"
+      LRSQL_ALLOWED_ORIGINS: ${LRSQL_PUBLIC_URL:?Defina LRSQL_PUBLIC_URL en .env.prod}
+      LRSQL_AUTHORITY_URL: ${LRSQL_PUBLIC_URL:?Defina LRSQL_PUBLIC_URL en .env.prod}
       LRSQL_LOG_LEVEL: ${LRSQL_LOG_LEVEL:-INFO}
     ports:
       - "127.0.0.1:${LRSQL_HTTP_PORT:?Defina LRSQL_HTTP_PORT en .env.prod}:8080"
@@ -52,7 +57,7 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - wget -q -O /dev/null http://127.0.0.1:8080/admin
+        - wget -q -T 4 -O /dev/null http://127.0.0.1:8080/admin
       interval: 10s
       timeout: 5s
       retries: 12
