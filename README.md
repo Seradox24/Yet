@@ -16,13 +16,15 @@ la siguiente ruta, pendiente de crear durante la futura instalación:
 │   └── svc-lrsql/             # clon de este repositorio
 │       ├── compose.yaml
 │       ├── .env.example
-│       ├── .env.prod          # privado, permisos 600
+│       ├── .env.prod          # enlace al archivo privado central
 │       ├── nginx/
 │       └── scripts/
 ├── moodle/                   # existente, independiente
 ├── documentacion/
 │   ├── contenido/
 │   └── public/               # sitio compilado; sin secretos ni respaldos
+├── secretos/servicios/svc-lrsql.env  # privado, permisos 600
+├── datos/servicios/svc-lrsql/postgres/ # PostgreSQL en este servidor
 └── respaldos/
     └── svc-lrsql/            # dumps privados
 ```
@@ -34,27 +36,33 @@ antes del primer arranque: no se comprobó su disponibilidad en vivo.
 
 Se conservan proyecto Compose `yet-lrsql`, red `yet-lrsql-internal` y volumen
 `yet-lrsql-postgres-data`. La carpeta del clon no cambia estos nombres.
-Los datos activos viven en el volumen Docker, fuera del repositorio. No copiar
+Sin `POSTGRES_DATA_PATH`, los datos viven en el volumen Docker. En la estructura
+central del servidor se usa un bind mount a `datos/servicios/svc-lrsql/postgres/`.
+No cambiar de volumen a bind mount en una instalación existente sin migrar los datos.
+No copiar
 el clon completo ni `.env.prod` a `documentacion/public/`.
 
 ## Requisitos y preparación futura
 
 Linux amd64, Bash 4+, Docker Engine, Compose v2.20+ (o v5) con `up --wait`,
-Git, curl, OpenSSL y Nginx del host. Dominio y certificado propios pendientes
+Git, curl, OpenSSL y Nginx 1.25.1+ del host (plantilla con `http2 on`). Dominio y certificado propios
 de definir. El usuario operador debe tener acceso a Docker.
 
 ```bash
 sudo install -d -o "$USER" -g "$(id -gn)" /srv/plataforma/servicios/svc-lrsql
 git clone --branch main --single-branch https://github.com/Seradox24/Yet.git /srv/plataforma/servicios/svc-lrsql
 cd /srv/plataforma/servicios/svc-lrsql
-umask 077
-cp .env.example .env.prod
-chmod 600 .env.prod
+bash scripts/initialize-server.sh https://DOMINIO-LRS USUARIO-ADMIN
 ```
 
 El destino de `git clone` debe estar vacío. Si existe una instalación, utilizar
 la actualización descrita abajo sin borrar configuración ni volumen.
-Reemplazar todos los valores `GENERATE_ME` y `example.com`. Generar cada secreto
+Reemplazar los argumentos anteriores por el dominio y usuario definitivos. El
+script genera secretos independientes, prepara datos/respaldos/operaciones y
+crea `.env.prod` como enlace a `/srv/plataforma/secretos/servicios/svc-lrsql.env`.
+Requiere permisos sobre esas rutas y rechaza sobrescribir configuraciones.
+Para una instalación fuera de esta convención, copiar `.env.example` como
+`.env.prod`, aplicar `chmod 600` y reemplazar `GENERATE_ME` y `example.com`. Generar cada secreto
 por separado con `openssl rand -hex 32` (mínimo 32 caracteres).
 Usar líneas `KEY=value` sin comillas, espacios ni comentarios al final.
 
@@ -66,6 +74,7 @@ Usar líneas `KEY=value` sin comillas, espacios ni comentarios al final.
 | `LRSQL_HTTP_PORT` | Puerto loopback del host, propuesto `18083` |
 | `LRSQL_PUBLIC_URL` | Origen HTTPS público, sin ruta ni barra final |
 | `LRSQL_LOG_LEVEL` | Nivel de logs, predeterminado `INFO` |
+| `POSTGRES_DATA_PATH` | Opcional: directorio absoluto para PostgreSQL; omitir para usar el volumen nombrado |
 
 La URL pública configura CORS y la URL de autoridad. No habilitar todos los
 orígenes para resolver problemas del proxy. Un futuro consumidor desde otro
@@ -95,6 +104,13 @@ contenedores. Todas las órdenes Compose deben incluir `--env-file .env.prod`.
 
 1. Elegir dominio, configurar DNS y obtener el certificado mediante el
    procedimiento del servidor antes de habilitar el bloque TLS.
+   Para Certbot webroot, habilitar primero un bloque HTTP con la ubicación
+   `/.well-known/acme-challenge/` de la plantilla y raíz `/var/www/html`;
+   todavía no incluir el bloque TLS. Luego ejecutar
+   `sudo certbot certonly --webroot -w /var/www/html -d <dominio-lrs>`.
+   Configurar un deploy hook para que, después de renovar, se ejecute
+   `nginx -t && systemctl reload nginx`. Comprobar con
+   `sudo certbot renew --cert-name <dominio-lrs> --dry-run --run-deploy-hooks --no-random-sleep-on-renew`.
 2. Adaptar `nginx/yet-lrsql.conf.example`: dominio, certificados y puerto.
    Deben coincidir con `LRSQL_PUBLIC_URL` y `LRSQL_HTTP_PORT`.
 3. Copiar a `/etc/nginx/sites-available/<dominio-lrs>` y enlazar desde
@@ -162,6 +178,10 @@ Revisión del 30-09-2026: Compose, sintaxis de scripts y manifests de imágenes
 verificados. El motor Docker local no está disponible: arranque, migraciones,
 salud real, escritura xAPI y Nginx/TLS quedan pendientes del ensayo en servidor.
 El repositorio queda preparado; su funcionamiento en ejecución aún no está certificado.
+
+La instalación real posterior está registrada en
+[docs/installation-2026-10-01.md](docs/installation-2026-10-01.md), junto con
+correcciones, rutas utilizadas y resultados de pruebas.
 
 El preflight se ensayó con datos ficticios y Docker/permisos simulados: acepta
 una configuración válida y rechaza valores de ejemplo, puerto inválido, URL

@@ -1,11 +1,18 @@
 server {
     listen 80;
     server_name lrs.example.com;
-    return 301 https://lrs.example.com$request_uri;
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/html;
+        try_files $uri =404;
+    }
+    location / {
+        return 301 https://lrs.example.com$request_uri;
+    }
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name lrs.example.com;
 
     # Las rutas de los certificados deben adaptarse al servidor.

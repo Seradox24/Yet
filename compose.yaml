@@ -9,7 +9,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-lrsql}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD en .env.prod}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ${POSTGRES_DATA_PATH:-postgres_data}:/var/lib/postgresql/data
     networks:
       - yet-internal
     healthcheck:
