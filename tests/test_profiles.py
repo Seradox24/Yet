@@ -1,8 +1,10 @@
 """Installation isolation and fail-closed profiles."""
 import argparse
+import json
 import os
 from pathlib import Path
 import socket
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -90,6 +92,25 @@ class Profiles(unittest.TestCase):
         (p/'SHA256SUMS').write_text('0'*64+'  database.dump\n')
         (p/'database.dump').write_bytes(b'corrupt')
         with self.assertRaisesRegex(ValueError,'checksum'): stt.validate_backup(p)
+
+    @unittest.skipIf(os.name == 'nt','Unix backup locking exercised on Linux')
+    def test_failed_dump_restarts_lrs_without_completing_backup(self):
+        c = stt.profile(self.path)
+        calls = []
+        def fake_compose(config, *args, **kwargs):
+            calls.append(args)
+            if args[0] == 'ps':
+                state = {'State':'running','Health':'healthy'}
+                return subprocess.CompletedProcess([],0,stdout=json.dumps(state)+'\n'+json.dumps(state)+'\n')
+            if args[0] == 'exec':
+                raise subprocess.CalledProcessError(1,['pg_dump'])
+            return subprocess.CompletedProcess([],0)
+        with patch.object(stt,'compose',side_effect=fake_compose):
+            with self.assertRaises(subprocess.CalledProcessError): stt.backup(c)
+        self.assertEqual(calls[-1][0],'up')
+        self.assertEqual(calls[-1][-1],'lrsql')
+        self.assertTrue(any(p.name.endswith('.partial') for p in Path(c['BACKUP_ROOT']).iterdir()))
+        self.assertFalse(any(p.name[0].isdigit() and not p.name.endswith('.partial') for p in Path(c['BACKUP_ROOT']).iterdir()))
 
 
 if __name__ == '__main__': unittest.main()
