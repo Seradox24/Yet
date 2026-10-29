@@ -1,168 +1,154 @@
-# Yet Analytics SQL LRS — despliegue de la plataforma
+# Yet Analytics SQL LRS — instalación independiente
 
-SQL LRS `v0.9.7` con PostgreSQL `16.15`. Las imágenes están fijadas por digest.
-El proyecto contiene el servicio, sus scripts y la configuración inicial; puede
-instalarse con Docker Compose en cualquier host Linux compatible. El backend se
-publica en loopback y PostgreSQL no expone puertos; Nginx del host termina HTTPS.
-El puerto interno de SQL LRS es `8080`.
+SQL LRS **0.9.11**, PostgreSQL **16.15-alpine3.24**, imágenes por digest y
+Compose propio. El backend escucha solo en loopback; Nginx del host termina
+HTTPS. No requiere Moodle, AuthSom ni carpetas de otros sistemas.
 
-## Estructura de referencia
+## Instalación nueva
 
-La plataforma usa `/srv/plataforma/` como estructura central. Yet ocupa las
-siguientes rutas:
+Linux amd64, Python 3.10+, Git, Docker Engine/Compose con `up --wait`, Nginx
+1.25.1+ y Certbot. No se necesita instalar librerías Python ni compilar upstream.
+Revisar el cambio en rama/PR, transferir un bundle y clonar su rama explícita o
+revisión exacta en la carpeta de servicio del destino. La VPS no necesita remoto,
+token ni clave GitHub. No sustituir una instalación existente con `init`.
 
-```text
-/srv/plataforma/
-├── servicios/svc-lrsql/                  # clon de este repositorio
-│   ├── compose.yaml
-│   ├── .env.example
-│   ├── .env.prod                         # enlace al archivo privado
-│   ├── nginx/
-│   └── scripts/
-├── secretos/servicios/svc-lrsql.env      # privado, permisos 600
-├── datos/servicios/svc-lrsql/postgres/   # persistencia de PostgreSQL
-├── respaldos/svc-lrsql/                  # dumps privados
-└── operaciones/svc-lrsql/                # registros privados de operación
+```sh
+python3 scripts/stt.py init --root /ruta/plataforma --project proyecto-yet-prod \
+  --url https://lrs.dominio.invalid --admin stt-admin --port 18083
+python3 scripts/stt.py --env-file /ruta/plataforma/configuraciones/yet/prod/prod.env check
+python3 scripts/stt.py --env-file /ruta/plataforma/configuraciones/yet/prod/prod.env up
 ```
 
-Se conservan el proyecto Compose `yet-lrsql`, la red `yet-lrsql-internal` y el
-volumen `yet-lrsql-postgres-data`; la carpeta del clon no cambia estos nombres.
-Sin `POSTGRES_DATA_PATH`, los datos viven en el volumen Docker; en la estructura
-central se usa un bind mount a `datos/servicios/svc-lrsql/postgres/`. No cambiar
-de volumen a bind mount en una instalación existente sin migrar los datos.
-No copiar el clon ni `.env.prod` a la documentación publicada.
+`init` requiere raíz, proyecto y URL explícitos. `--service` y `--environment`
+seleccionan el área (predeterminados `yet`, `prod`). Crea únicamente configuración,
+secretos, datos, respaldos y registros propios. Rechaza configuración/datos
+existentes y puertos ocupados; no inicia contenedores. Nunca imprime secretos.
 
-## Requisitos e instalación
+## Perfil, carga y consumidores
 
-Linux amd64, Bash 4+, Docker Engine, Compose v2.20+ (o v5) con `up --wait`,
-Git, curl, OpenSSL y Nginx 1.25.1+ del host (la plantilla usa `http2 on`).
-El dominio y el certificado se definen en cada entorno. El usuario operador
-debe tener acceso a Docker.
+El lanzador acepta un `--env-file` absoluto; sin opción usa `.env.prod` desde la
+raíz del repositorio, conservando la entrada anterior. Lee `CLAVE=valor` como
+datos sin expansión shell, interpolación ni comillas. Con `SECRET_ROOT`, carga
+`SECRET_ROOT/secrets.env`; rechaza duplicados y las opciones administradas
+exportadas por la consola. El perfil se valida antes de ejecutar Compose.
 
-```bash
-sudo install -d -o "$USER" -g "$(id -gn)" /srv/plataforma/servicios/svc-lrsql
-git clone --branch main --single-branch https://github.com/Seradox24/Yet.git /srv/plataforma/servicios/svc-lrsql
-cd /srv/plataforma/servicios/svc-lrsql
-bash scripts/initialize-server.sh https://DOMINIO-LRS USUARIO-ADMIN
-```
+Compose recibe los archivos explícitos, valores validados, directorio del
+componente y `-p COMPOSE_PROJECT_NAME`. No depende del directorio de la consola.
+Los secretos separados contienen exactamente POSTGRES_PASSWORD,
+LRSQL_ADMIN_PASSWORD, LRSQL_API_KEY y LRSQL_API_SECRET. En Unix: archivos 0600 y
+directorio de secretos 0700. La variante anterior de archivo único sigue admitida.
 
-El destino de `git clone` debe estar vacío. Si existe una instalación, usar la
-actualización descrita abajo sin borrar configuración ni datos. Reemplazar los
-argumentos por el dominio público y el usuario administrador definitivos. El
-script genera secretos independientes, prepara datos, respaldos y operaciones,
-y crea `.env.prod` como enlace a `/srv/plataforma/secretos/servicios/svc-lrsql.env`.
-Requiere permisos sobre esas rutas y rechaza sobrescribir configuraciones.
-Para una instalación fuera de esta convención, copiar `.env.example` como
-`.env.prod`, aplicar `chmod 600` y reemplazar `GENERATE_ME` y `example.com`.
-Generar cada secreto por separado con `openssl rand -hex 32` (mínimo 32
-caracteres). Usar líneas `KEY=value` sin comillas, espacios ni comentarios al final.
-
-| Variable | Uso |
+| Opción | Consumidor y momento |
 | --- | --- |
-| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | Base propia de SQL LRS |
-| `LRSQL_ADMIN_USER`, `LRSQL_ADMIN_PASSWORD` | Cuenta administrativa inicial |
-| `LRSQL_API_KEY`, `LRSQL_API_SECRET` | Credenciales xAPI iniciales |
-| `LRSQL_HTTP_PORT` | Puerto loopback del host; la plantilla usa `18083` |
-| `LRSQL_PUBLIC_URL` | Origen HTTPS público, sin ruta ni barra final |
-| `LRSQL_LOG_LEVEL` | Nivel de logs, predeterminado `INFO` |
-| `POSTGRES_DATA_PATH` | Opcional: directorio absoluto para PostgreSQL; omitir para usar el volumen nombrado |
+| COMPOSE_PROJECT_NAME | Compose al crear contenedores, red y volumen; sin valor conserva `yet-lrsql` |
+| POSTGRES_IMAGE, LRSQL_IMAGE | Compose al desplegar; obligatoriamente versión con digest |
+| POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD | Inicialización PostgreSQL y conexión LRS al iniciar |
+| POSTGRES_DATA_PATH | Bind mount al desplegar; omitir conserva volumen nombrado |
+| LRSQL_ADMIN_USER, LRSQL_ADMIN_PASSWORD | LRSQL_ADMIN_USER_DEFAULT/LRSQL_ADMIN_PASS_DEFAULT; cuenta inicial |
+| LRSQL_API_KEY, LRSQL_API_SECRET | LRSQL_API_KEY_DEFAULT/LRSQL_API_SECRET_DEFAULT; credencial xAPI inicial |
+| LRSQL_PUBLIC_URL | LRSQL_ALLOWED_ORIGINS y LRSQL_AUTHORITY_URL al iniciar; dominio del generador Nginx |
+| LRSQL_HTTP_PORT | Puerto loopback publicado y proxy Nginx; puerto interno 8080 constante |
+| LRSQL_LOG_LEVEL | Nivel al iniciar, por defecto INFO |
+| POSTGRES_CPUS, POSTGRES_MEMORY | Límites Docker, predeterminados 1 CPU/512m |
+| LRSQL_CPUS, LRSQL_MEMORY | Límites Docker, predeterminados 2 CPU/1536m |
+| JAVA_TOOL_OPTIONS | JVM al iniciar; heap máximo 60% del límite, inicial 10% |
+| SECRET_ROOT | Archivo privado al cargar el perfil |
+| BACKUP_ROOT, BACKUP_KEEP | Destino y retención de copias completas; siete por defecto |
+| OPS_ROOT | Área privada reservada para evidencia del operador |
 
-La URL pública configura CORS y la URL de autoridad. No habilitar todos los
-orígenes para resolver problemas del proxy; un consumidor desde otro origen de
-navegador requiere una lista explícita y el envío entre servidores no necesita
-CORS. No hay integración automática con Moodle o Keycloak.
+Sin proyecto explícito se conservan la red `yet-lrsql-internal` y el volumen
+`yet-lrsql-postgres-data`. Otro proyecto utiliza su propio prefijo. No cambiar el
+proyecto, bind mount, nombre de base o imágenes de una instalación existente sin
+revisar datos, compatibilidad y retorno. `init` no migra ni rota credenciales.
+Editar valores DEFAULT o POSTGRES_PASSWORD no cambia cuentas almacenadas.
+La rotación se realiza por las interfaces administrativas del servicio y SQL de
+la base propia, se actualizan los archivos privados y se verifica por separado.
 
-Las variables `*_DEFAULT` inicializan cuentas y claves: cambiar el archivo no
-constituye un procedimiento de rotación. Cambiar `POSTGRES_PASSWORD` con un
-volumen existente tampoco modifica la contraseña almacenada en PostgreSQL.
+## Publicación HTTPS
 
-## Validación e inicio
+Generar el vhost HTTP con `nginx` y, después del certificado, con `nginx --tls`.
+El generador usa el mismo perfil del backend y no instala archivos del host.
+ACME utiliza `/var/www/letsencrypt`. Instalar solo el vhost propio y ejecutar
+`nginx -t` antes de cada recarga. Solicitar el certificado con Certbot webroot;
+conservar el hook de recarga existente y comprobar la renovación simulada con
+`--dry-run --run-deploy-hooks --no-random-sleep-on-renew`.
 
-Ejecutar desde el clon:
+Administración `/admin`, xAPI `/xapi`. El proxy no reescribe rutas y sobrescribe
+cabeceras forwarded. PostgreSQL no publica puertos. No abrir el puerto del backend
+en UFW. CORS queda limitado al origen público; otros navegadores requieren una
+adaptación explícita. No hay conexión automática a Moodle ni OIDC.
 
-```bash
-bash scripts/preflight.sh       # valida configuración y Docker; no inicia servicios
-ss -ltn '( sport = :18083 )'    # ajustar al puerto configurado; no debe haber listener
-bash scripts/deploy.sh
+```sh
+python3 scripts/stt.py --env-file /ruta/absoluta/prod.env verify
+python3 scripts/stt.py --env-file /ruta/absoluta/prod.env verify --public
 ```
 
-El despliegue descarga las imágenes, espera hasta 240 segundos a que los
-servicios estén saludables y verifica la administración y la lectura autenticada
-de statements por loopback. Si falla, revisar los logs: no elimina
-automáticamente datos ni contenedores. Todas las órdenes Compose deben incluir
-`--env-file .env.prod`.
+Comprueba login real, cierre de sesión, rechazo de claves/contraseñas inválidas,
+lectura xAPI 1.0.3/2.0.0 y paginación si hay datos. `verify --write` agrega eventos:
+usarlo exclusivamente en instancias desechables. No borra ni modifica statements
+existentes. No ejecutar la prueba de escritura contra producción.
 
-## Nginx del host
+Compatibilidad: `preflight.sh`, `deploy.sh` y `check.sh` delegan en el lanzador y
+aceptan `--env-file`. `initialize-server.sh URL ADMIN RAIZ PROYECTO` exige ahora
+raíz/proyecto explícitos; los dos argumentos antiguos fallan sin crear archivos.
+`smoke-test.ps1` admite `-EnvFile` y las opciones anteriores.
 
-1. Elegir dominio, configurar DNS y obtener el certificado según el
-   procedimiento del entorno antes de habilitar el bloque TLS. Para Certbot
-   webroot, habilitar primero un bloque HTTP con la ubicación
-   `/.well-known/acme-challenge/` de la plantilla y raíz `/var/www/html`,
-   todavía sin el bloque TLS. Luego ejecutar
-   `sudo certbot certonly --webroot -w /var/www/html -d <dominio-lrs>`.
-   Configurar un deploy hook que ejecute `nginx -t && systemctl reload nginx`
-   tras cada renovación y comprobar con
-   `sudo certbot renew --cert-name <dominio-lrs> --dry-run --run-deploy-hooks --no-random-sleep-on-renew`.
-2. Adaptar `nginx/yet-lrsql.conf.example`: dominio, certificados y puerto.
-   Deben coincidir con `LRSQL_PUBLIC_URL` y `LRSQL_HTTP_PORT`.
-3. Copiar a `/etc/nginx/sites-available/<dominio-lrs>` y enlazar desde
-   `/etc/nginx/sites-enabled/<dominio-lrs>` sin reemplazar otros sitios.
-4. Ejecutar `sudo nginx -t`; solo si pasa, `sudo systemctl reload nginx`.
+## Respaldo y recuperación
 
-La plantilla redirige HTTP a HTTPS y conserva las rutas sin reescritura. No
-abrir el puerto loopback en el firewall. Administración:
-`https://<dominio-lrs>/admin`; xAPI: `https://<dominio-lrs>/xapi`. Validar el
-login y la API por HTTPS: la salud interna no demuestra que DNS, TLS ni el
-proxy funcionen.
+`stt.py --env-file PERFIL backup` exige ambos servicios saludables, toma un
+bloqueo exclusivo y detiene únicamente LRS. Genera `pg_dump -Fc`, archivo privado
+con ambos perfiles, referencias exactas de imágenes, revisión Git y bundle del
+código. Reinicia LRS incluso si falla la copia. Solo después de verificar los
+checksums completa la copia y aplica retención. Los `.partial` no cuentan como
+copias correctas; investigar su causa sin usarlos para recuperación.
 
-## Operación y actualización
+`stt.py --env-file PERFIL timer` instala unidades del proyecto para las 04:50
+America/Santiago; `--calendar` permite otro horario diario explícito. No sustituye
+unidades diferentes. Consultar el journal de `<proyecto>-backup.service`.
+Los dumps incluyen cuentas, claves y eventos: conservarlos como secretos.
 
-```bash
-cd /srv/plataforma/servicios/svc-lrsql
-docker compose --env-file .env.prod ps
-docker compose --env-file .env.prod logs --tail 100
-bash scripts/check.sh
+Restaurar siempre en una raíz nueva y proyecto aislado. Validar SHA256SUMS,
+recuperar el bundle y usar exactamente las imágenes de `images.json`. Crear un
+perfil con otro puerto/raíces pero el mismo administrador y recuperar sus secretos
+desde `private.tar.gz` por canal privado. Leer solo los miembros conocidos
+`profile.env` y `secrets.env`; no extraer rutas arbitrarias del archivo.
+
+```sh
+python3 scripts/stt.py --env-file /nueva/raiz/perfil.env restore --source /copia/completa
+python3 scripts/stt.py --env-file /nueva/raiz/perfil.env verify
 ```
 
-Antes de actualizar, respaldar PostgreSQL y registrar `git rev-parse HEAD`.
-Luego ejecutar `git pull --ff-only` y `bash scripts/deploy.sh`. Revisar cambios
-de versión y migraciones antes de actualizar imágenes; volver a una revisión
-Git anterior no revierte migraciones de datos.
-`docker compose --env-file .env.prod down` conserva el volumen; no utilizar
-`down --volumes` ni limpiezas globales de Docker.
+`restore` rechaza datos no vacíos, un proyecto con contenedores, colisiones,
+checksums incorrectos e imágenes diferentes. No restaura sobre la base activa.
+Verificar cuentas y statements antes de cambiar el proxy. La recuperación de los
+certificados/vhost se hace según la operación del host; sus claves no están en Git.
 
-Prueba opcional con PowerShell 7 desde el clon y un equipo con acceso al endpoint:
+Antes de actualizar: respaldo correcto y restauración ensayada, revisar cambios
+upstream/migraciones, fijar imágenes y revisión nueva. Volver solo a una imagen o
+commit no revierte un esquema. Ante fallo, detener el proyecto y deshabilitar su
+vhost conservando datos/secretos. Nunca limpiar globalmente Docker ni usar
+`down --volumes` en producción. Copiar los respaldos fuera de la VPS sigue siendo
+responsabilidad del operador.
 
-```powershell
-pwsh -NoProfile -File ./scripts/smoke-test.ps1 -Public
-pwsh -NoProfile -File ./scripts/smoke-test.ps1 -Public -WriteStatement
-pwsh -NoProfile -File ./scripts/smoke-test.ps1 -Public -XapiVersion 2.0.0
+## Validación del repositorio
+
+```sh
+python3 -m unittest discover -s tests -v
+python3 tests/integration.py
 ```
 
-Sin `-Public`, prueba el loopback del equipo donde se ejecuta. La versión
-predeterminada es `1.0.3`; SQL LRS admite también `2.0.0`. `-WriteStatement`
-agrega un evento persistente: utilizar primero una instalación de prueba.
+La segunda prueba crea dos instalaciones Linux desechables con identidades,
+raíces, puertos y credenciales distintos. Escribe/lee ambas versiones xAPI,
+comprueba persistencia, rechaza acceso cruzado y colisiones, respalda y restaura
+en un tercer proyecto. Retira únicamente esos proyectos identificados y sus
+volúmenes temporales. Ejecutarla desde cualquier directorio del host de pruebas.
 
-Los registros de cada despliegue y el estado de las comprobaciones se conservan
-fuera del repositorio, en la documentación operativa del servidor.
-
-## Respaldo
-
-Ejemplo manual desde el clon:
-
-```bash
-umask 077
-mkdir -p /srv/plataforma/respaldos/svc-lrsql
-docker compose --env-file .env.prod exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > /srv/plataforma/respaldos/svc-lrsql/lrsql-$(date -u +%Y%m%dT%H%M%SZ).dump
-```
-
-Confirmar el éxito y el tamaño del dump, copiarlo fuera del servidor y guardar
-`.env.prod` por un canal privado. Ensayar `pg_restore` en una base aislada antes
-de almacenar datos reales; no restaurar sobre la base activa. Automatización,
-retención y restauración verificada quedan para la operación del servidor.
+Evidencia STT: `docs/STT_VERIFICACION_2026-10-29.md`. La documentación pública se
+entrega como PR independiente de stt-docsite y no se publica por instalar Yet.
 
 ## Referencias
 
-- [Configuración oficial v0.9.7](https://github.com/yetanalytics/lrsql/blob/v0.9.7/doc/env_vars.md).
-- [Docker oficial](https://github.com/yetanalytics/lrsql/blob/v0.9.7/doc/docker.md).
-- [Versiones xAPI](https://github.com/yetanalytics/lrsql/blob/v0.9.7/doc/xapi_versioning.md).
+- https://github.com/yetanalytics/lrsql/releases/tag/v0.9.11
+- https://github.com/yetanalytics/lrsql/compare/v0.9.7...v0.9.11
+- https://github.com/yetanalytics/lrsql/blob/v0.9.11/doc/env_vars.md
+- https://github.com/yetanalytics/lrsql/blob/v0.9.11/doc/xapi_versioning.md

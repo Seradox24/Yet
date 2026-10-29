@@ -15,4 +15,8 @@ config/*.crt
 # Archivos del sistema y editores
 .DS_Store
 Thumbs.db
+__pycache__/
+*.pyc
+*.bundle
+*.dump
 

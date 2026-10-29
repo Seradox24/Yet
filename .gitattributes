@@ -3,3 +3,4 @@
 *.conf text eol=lf
 *.example text eol=lf
 *.md text eol=lf
+*.py text eol=lf
