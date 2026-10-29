@@ -200,7 +200,9 @@ def collision(c):
             if not own and c.get('POSTGRES_DATA_PATH'):
                 data = Path(c['POSTGRES_DATA_PATH']).resolve()
                 for mount in obj.get('Mounts', []):
-                    source = Path(mount.get('Source','/')).resolve()
+                    if not mount.get('Source'):
+                        continue
+                    source = Path(mount['Source']).resolve()
                     if source == data or source in data.parents or data in source.parents:
                         raise ValueError('Data directory already assigned to another project')
     own_ids = compose(c, 'ps', '-q', 'lrsql', capture_output=True, text=True).stdout.strip()
