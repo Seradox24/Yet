@@ -14,12 +14,18 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 import stt
 
 
+def available_port():
+    with socket.socket() as sock:
+        sock.bind(('127.0.0.1',0))
+        return sock.getsockname()[1]
+
+
 class Profiles(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.args = argparse.Namespace(root=self.tmp.name, project='verify-yet-a', service='yet',
-                                       environment='test', url='https://lrs-a.invalid', port=28183, admin='test-admin')
+                                       environment='test', url='https://lrs-a.invalid', port=available_port(), admin='test-admin')
         self.path = stt.initialize(self.args)
 
     def test_two_independent_compose_models(self):
@@ -27,7 +33,7 @@ class Profiles(unittest.TestCase):
         self.args.root = str(Path(self.tmp.name)/'second-root')
         self.args.project = 'verify-yet-b'
         self.args.url = 'https://lrs-b.invalid'
-        self.args.port = 28184
+        self.args.port = available_port()
         b = stt.profile(stt.initialize(self.args))
         ma, mb = stt.check(a), stt.check(b)
         self.assertNotEqual(ma['networks'],mb['networks'])
@@ -54,7 +60,7 @@ class Profiles(unittest.TestCase):
         self.assertEqual(original,self.path.read_bytes())
 
     def test_missing_required_option(self):
-        self.path.write_text(self.path.read_text().replace('LRSQL_HTTP_PORT=28183\n',''))
+        self.path.write_text(self.path.read_text().replace('LRSQL_HTTP_PORT='+str(self.args.port)+'\n',''))
         with self.assertRaisesRegex(ValueError,'Missing'): stt.profile(self.path)
 
     def test_example_rejected(self):
