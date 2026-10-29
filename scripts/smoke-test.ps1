@@ -3,13 +3,14 @@ param(
     [switch]$WriteStatement,
     [ValidateSet('1.0.3', '2.0.0')]
     [string]$XapiVersion = '1.0.3',
-    [switch]$Public
+    [switch]$Public,
+    [string]$EnvFile
 )
 
 $ErrorActionPreference = 'Stop'
 
 $projectDirectory = Split-Path -Parent $PSScriptRoot
-$envPath = Join-Path $projectDirectory '.env.prod'
+$envPath = if ($EnvFile) { $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($EnvFile) } else { Join-Path $projectDirectory '.env.prod' }
 
 if (-not (Test-Path -LiteralPath $envPath)) {
     throw 'No existe .env.prod. Copie .env.example como .env.prod y configure sus credenciales.'
@@ -17,6 +18,13 @@ if (-not (Test-Path -LiteralPath $envPath)) {
 
 $envValues = Get-Content -LiteralPath $envPath -Raw |
     ConvertFrom-StringData
+if ($envValues.SECRET_ROOT) {
+    $privateValues = Get-Content -LiteralPath (Join-Path $envValues.SECRET_ROOT 'secrets.env') -Raw | ConvertFrom-StringData
+    foreach ($key in $privateValues.Keys) {
+        if ($envValues.ContainsKey($key)) { throw 'Opción privada duplicada.' }
+        $envValues[$key] = $privateValues[$key]
+    }
+}
 
 $requiredVariables = @(
     'LRSQL_API_KEY',

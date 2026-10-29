@@ -2,8 +2,13 @@ name: yet-lrsql
 
 services:
   postgres:
-    image: postgres:16.15-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+    image: ${POSTGRES_IMAGE:-postgres:16.15-alpine3.24@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab}
     restart: unless-stopped
+    cpus: ${POSTGRES_CPUS:-1}
+    mem_limit: ${POSTGRES_MEMORY:-512m}
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-lrsql}
       POSTGRES_USER: ${POSTGRES_USER:-lrsql}
@@ -22,9 +27,14 @@ services:
       start_period: 10s
 
   lrsql:
-    image: yetanalytics/lrsql:v0.9.7@sha256:e80e9bf9f715d93e9e2ad084dcec7a9847087d24485b71d126aede22e4d40827
+    image: ${LRSQL_IMAGE:-yetanalytics/lrsql:v0.9.11@sha256:bf5661ab216d07175f6e429951bf53c79f6070d54812285ea4c208f991cf0a04}
     platform: linux/amd64
     restart: unless-stopped
+    cpus: ${LRSQL_CPUS:-2}
+    mem_limit: ${LRSQL_MEMORY:-1536m}
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
     command:
       - /lrsql/bin/run_postgres.sh
     depends_on:
@@ -32,6 +42,7 @@ services:
         condition: service_healthy
         restart: true
     environment:
+      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:--XX:MaxRAMPercentage=60.0 -XX:InitialRAMPercentage=10.0}
       LRSQL_ADMIN_USER_DEFAULT: ${LRSQL_ADMIN_USER:?Defina LRSQL_ADMIN_USER en .env.prod}
       LRSQL_ADMIN_PASS_DEFAULT: ${LRSQL_ADMIN_PASSWORD:?Defina LRSQL_ADMIN_PASSWORD en .env.prod}
       LRSQL_API_KEY_DEFAULT: ${LRSQL_API_KEY:?Defina LRSQL_API_KEY en .env.prod}
@@ -43,6 +54,7 @@ services:
       LRSQL_DB_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD en .env.prod}
       LRSQL_POOL_INITIALIZATION_FAIL_TIMEOUT: 60000
       LRSQL_ENABLE_HTTP: "true"
+      LRSQL_ENABLE_HTTPS: "false"
       LRSQL_HTTP_HOST: "0.0.0.0"
       LRSQL_HTTP_PORT: "8080"
       LRSQL_ENABLE_ADMIN_UI: "true"
@@ -66,9 +78,9 @@ services:
 
 volumes:
   postgres_data:
-    name: yet-lrsql-postgres-data
+    name: ${COMPOSE_PROJECT_NAME:-yet-lrsql}-postgres-data
 
 networks:
   yet-internal:
-    name: yet-lrsql-internal
+    name: ${COMPOSE_PROJECT_NAME:-yet-lrsql}-internal
     driver: bridge
