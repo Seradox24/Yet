@@ -272,6 +272,14 @@ def nginx(c, tls):
         print('server { listen 443 ssl; listen [::]:443 ssl; http2 on; server_name '+host+'; ssl_certificate /etc/letsencrypt/live/'+host+'/fullchain.pem; ssl_certificate_key /etc/letsencrypt/live/'+host+'/privkey.pem; ssl_protocols TLSv1.2 TLSv1.3; ssl_session_tickets off; server_tokens off; client_max_body_size 20m; add_header X-Content-Type-Options nosniff always; location / { proxy_pass http://127.0.0.1:'+c['LRSQL_HTTP_PORT']+'; proxy_http_version 1.1; proxy_set_header Connection ""; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; proxy_set_header X-Forwarded-For $remote_addr; proxy_set_header X-Forwarded-Proto https; proxy_set_header X-Forwarded-Host $host; proxy_set_header X-Forwarded-Port 443; proxy_set_header Forwarded ""; proxy_read_timeout 60s; } }')
 
 
+def sha256_file(path):
+    digest = hashlib.sha256()
+    with path.open('rb') as stream:
+        for block in iter(lambda: stream.read(1024*1024), b''):
+            digest.update(block)
+    return digest.hexdigest()
+
+
 def backup(c):
     import fcntl
     os.umask(0o077)
@@ -297,8 +305,8 @@ def backup(c):
             (pending/'revision.txt').write_bytes(subprocess.check_output(['git','-C',str(ROOT),'rev-parse','HEAD']))
             subprocess.run(['git','-C',str(ROOT),'bundle','create',str(pending/'source.bundle'),'HEAD'],check=True)
         finally:
-            compose(c,'start','--wait','--wait-timeout','300','lrsql',stdout=subprocess.DEVNULL)
-        checks = [hashlib.sha256(f.read_bytes()).hexdigest()+'  '+f.name for f in sorted(pending.iterdir())]
+            compose(c,'up','-d','--no-deps','--wait','--wait-timeout','300','lrsql',stdout=subprocess.DEVNULL)
+        checks = [sha256_file(f)+'  '+f.name for f in sorted(pending.iterdir())]
         (pending/'SHA256SUMS').write_text('\n'.join(checks)+'\n')
         validate_backup(pending)
         pending.rename(destination/stamp)
@@ -319,7 +327,7 @@ def validate_backup(path):
         if not sep or name not in required or name in entries or not re.fullmatch('[a-f0-9]{64}',digest):
             raise ValueError('Invalid backup manifest')
         f = path/name
-        if f.is_symlink() or not f.is_file() or hashlib.sha256(f.read_bytes()).hexdigest() != digest:
+        if f.is_symlink() or not f.is_file() or sha256_file(f) != digest:
             raise ValueError('Backup checksum mismatch')
         entries[name] = digest
     if set(entries) != required:
@@ -401,7 +409,8 @@ def main():
         compose(c,'up','-d','--wait','--wait-timeout','300')
         verify(c)
     elif a.action == 'restart':
-        compose(c,'restart','--wait','--wait-timeout','300')
+        compose(c,'restart','--no-deps','lrsql')
+        compose(c,'up','-d','--no-deps','--wait','--wait-timeout','300','lrsql')
         verify(c)
 
 

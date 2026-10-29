@@ -32,7 +32,8 @@ def run():
                 stt.collision(c)
                 stt.compose(c,'up','-d','--wait','--wait-timeout','300')
                 stt.verify(c,write=True)
-                stt.compose(c,'restart','--wait','--wait-timeout','300','lrsql')
+                stt.compose(c,'restart','--no-deps','lrsql')
+                stt.compose(c,'up','-d','--no-deps','--wait','--wait-timeout','300','lrsql')
                 stt.verify(c)
             a,b = instances
             import base64
